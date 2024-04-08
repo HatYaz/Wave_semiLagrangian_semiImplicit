@@ -1,0 +1,72 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+# Constants and parameters
+Lx = Ly = 100.0  # Length of the domain (meters)
+T = 60.0  # Total time (seconds)
+Nx = Ny = 100  # Number of spatial points
+Nt = 1000  # Number of time steps
+c = 1.0  # Wave speed (meters/second)
+dx = dy = Lx / (Nx - 1)
+dt = T / Nt
+
+# Initial condition: Gaussian pulse (normalized)
+def initial_condition(x, y):
+    return np.exp(-((x - 0.5*Lx) / (0.1*Lx))**2 - ((y - 0.5*Ly) / (0.1*Ly))**2) / 10
+
+# Function to calculate the right-hand side of the wave equation
+def rhs(psi):
+    d2x = np.zeros_like(psi)
+    d2y = np.zeros_like(psi)
+    for i in range(Nx):
+        for j in range(Ny):
+            d2x[i, j] = (psi[(i+1)%Nx, j] - 2*psi[i, j] + psi[(i-1)%Nx, j]) / (dx**2)
+            d2y[i, j] = (psi[i, (j+1)%Ny] - 2*psi[i, j] + psi[i, (j-1)%Ny]) / (dy**2)
+    return c**2 * (d2x + d2y)
+
+# Semi-Lagrangian backward advection scheme
+def semi_lagrangian(psi):
+    psi_new = np.zeros_like(psi)
+    for i in range(Nx):
+        for j in range(Ny):
+            # Backward advection
+            x_old = i - c * dt / dx
+            y_old = j - c * dt / dy
+            i_old = int(x_old) % Nx
+            j_old = int(y_old) % Ny
+            psi_new[i, j] = psi[i_old, j_old]
+    return psi_new
+
+# Semi-implicit method to solve the wave equation
+def semi_implicit(psi):
+    # Construct the implicit matrix
+    alpha = c * dt / dx
+    A = np.eye(Nx) * (1 + 2 * alpha) - np.eye(Nx, k=1) * alpha - np.eye(Nx, k=-1) * alpha
+    A[0, -1] = -alpha  # Periodic boundary condition
+    A[-1, 0] = -alpha  # Periodic boundary condition
+    
+    # Solve the linear system using implicit method
+    psi_new = np.linalg.solve(A, psi)
+    return psi_new
+
+# Initialize arrays
+x = np.linspace(0, Lx, Nx, endpoint=False)  # Avoid duplicate endpoint for periodic boundary
+y = np.linspace(0, Ly, Ny, endpoint=False)  # Avoid duplicate endpoint for periodic boundary
+X, Y = np.meshgrid(x, y)
+psi = initial_condition(X, Y)
+
+# Solve the wave equation using semi-Lagrangian semi-implicit scheme
+for n in range(Nt):
+    psi = semi_lagrangian(psi)
+    psi = semi_implicit(psi)
+
+# Plot the result in 3D
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.plot_surface(X, Y, psi, cmap='viridis')
+ax.set_xlabel('X (m)')
+ax.set_ylabel('Y (m)')
+ax.set_zlabel('Displacement (m)')
+ax.set_title('Wave on the Surface of Water with Periodic Boundary Conditions (Semi-Lagrangian Semi-Implicit)')
+plt.show()
